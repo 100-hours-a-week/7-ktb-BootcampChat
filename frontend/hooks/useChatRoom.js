@@ -386,6 +386,22 @@ export const useChatRoom = () => {
       router.replace('/?error=session_expired');
     });
 
+    // 채팅방 삭제 이벤트
+    socketRef.current.on('roomDeleted', (data) => {
+      if (!mountedRef.current) return;
+      
+      // 채팅방이 삭제되었을 때 처리
+      if (typeof data === 'string') {
+        // roomId만 전달된 경우 (room-list에서)
+        console.log('Room deleted:', data);
+      } else {
+        // 삭제 메시지가 포함된 경우 (채팅방 내에서)
+        console.log('Room deleted with message:', data);
+        Toast.warning(data.message || '채팅방이 삭제되었습니다.');
+        router.push('/chat-rooms');
+      }
+    });
+
     socketRef.current.on('error', (error) => {
       if (!mountedRef.current) return;
       console.error('Socket error:', error);

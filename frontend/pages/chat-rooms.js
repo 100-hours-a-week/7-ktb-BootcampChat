@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/router';
 import dynamic from 'next/dynamic';
-import { LockIcon, ErrorCircleIcon, NetworkIcon, RefreshOutlineIcon, GroupIcon } from '@vapor-ui/icons';
+import { LockIcon, ErrorCircleIcon, NetworkIcon, RefreshOutlineIcon, GroupIcon, TrashIcon } from '@vapor-ui/icons';
 import { Button, Card, Text, Badge, Callout } from '@vapor-ui/core';
 import { Flex, HStack, Stack, Box } from '../components/ui/Layout';
 import { StyledTable, StyledTableHead, StyledTableBody, StyledTableRow, StyledTableHeader, StyledTableCell } from '../components/ui/StyledTable';
@@ -161,6 +161,54 @@ const TableWrapper = ({ children, onScroll, loadingMore, hasMore, rooms }) => {
   );
 };
 
+// 삭제 확인 모달 컴포넌트
+const DeleteConfirmModal = ({ isOpen, onClose, onConfirm, roomName }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-overlay" style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
+    }}>
+      <div className="modal-content" style={{
+        backgroundColor: 'var(--vapor-color-normal)',
+        borderRadius: 'var(--vapor-radius-lg)',
+        padding: 'var(--vapor-space-400)',
+        maxWidth: '400px',
+        width: '90%',
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)'
+      }}>
+        <Text typography="heading4" style={{ marginBottom: 'var(--vapor-space-200)' }}>
+          채팅방 삭제
+        </Text>
+        <HStack gap="200" justify="flex-end">
+          <Button
+            variant="outline"
+            color="secondary"
+            onClick={onClose}
+          >
+            취소
+          </Button>
+          <Button
+            color="danger"
+            onClick={onConfirm}
+          >
+            삭제
+          </Button>
+        </HStack>
+      </div>
+    </div>
+  );
+};
+
 function ChatRoomsComponent() {
   const router = useRouter();
   const [rooms, setRooms] = useState([]);
@@ -179,6 +227,8 @@ function ChatRoomsComponent() {
   const [hasMore, setHasMore] = useState(true);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [joiningRoom, setJoiningRoom] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [roomToDelete, setRoomToDelete] = useState(null);
 
   // Refs
   const socketRef = useRef(null);
@@ -518,6 +568,7 @@ function ChatRoomsComponent() {
               previousRoomsRef.current = updatedRooms;
               return updatedRooms;
             });
+            Toast.info('채팅방이 삭제되었습니다.');
           },
           roomUpdated: (updatedRoom) => {
             setRooms(prev => {
@@ -598,6 +649,52 @@ function ChatRoomsComponent() {
     }
   };
 
+  const handleDeleteRoom = async (roomId) => {
+    if (connectionStatus !== CONNECTION_STATUS.CONNECTED) {
+      setError({
+        title: '채팅방 삭제 실패',
+        message: '서버와 연결이 끊어져 있습니다.',
+        type: 'danger'
+      });
+      return;
+    }
+
+    setRoomToDelete(roomId);
+    setIsDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteRoom = async () => {
+    if (!roomToDelete) return;
+
+    try {
+      const response = await axiosInstance.delete(`/api/rooms/${roomToDelete}`, {
+        timeout: 5000
+      });
+
+      if (response.data.success) {
+        setIsDeleteConfirmOpen(false);
+        setRoomToDelete(null);
+        setRooms(prev => prev.filter(room => room._id !== roomToDelete));
+        Toast.success('채팅방이 삭제되었습니다.');
+      } else {
+        throw new Error('DELETE_FAILED');
+      }
+    } catch (error) {
+      console.error('Room delete error:', error);
+      let errorMessage = '삭제에 실패했습니다.';
+      if (error.response?.status === 404) {
+        errorMessage = '채팅방을 찾을 수 없습니다.';
+      } else if (error.response?.status === 403) {
+        errorMessage = '채팅방 삭제 권한이 없습니다.';
+      }
+      setError({
+        title: '채팅방 삭제 실패',
+        message: error.response?.data?.message || errorMessage,
+        type: 'danger'
+      });
+    }
+  };
+
   const renderRoomsTable = () => {
     if (!rooms || rooms.length === 0) return null;
     
@@ -605,10 +702,10 @@ function ChatRoomsComponent() {
       <StyledTable>
         <StyledTableHead>
           <StyledTableRow>
-            <StyledTableHeader width="45%">채팅방</StyledTableHeader>
+            <StyledTableHeader width="40%">채팅방</StyledTableHeader>
             <StyledTableHeader width="15%">참여자</StyledTableHeader>
-            <StyledTableHeader width="25%">생성일</StyledTableHeader>
-            <StyledTableHeader width="15%">액션</StyledTableHeader>
+            <StyledTableHeader width="20%">생성일</StyledTableHeader>
+            <StyledTableHeader width="25%">액션</StyledTableHeader>
           </StyledTableRow>
         </StyledTableHead>
         <StyledTableBody>
@@ -621,6 +718,11 @@ function ChatRoomsComponent() {
                     <LockIcon size={16} style={{ color: 'var(--vapor-color-warning)' }} />
                     <Text typography="body1" style={{ color: 'var(--vapor-color-warning)' }}>비밀번호 필요</Text>
                   </HStack>
+                )}
+                {room.creator?._id === currentUser?.id && (
+                  <Text typography="body2" style={{ color: 'var(--vapor-color-primary)', marginTop: 'var(--vapor-space-050)', marginLeft: '10px'}}>
+                    방 생성자
+                  </Text>
                 )}
               </StyledTableCell>
               <StyledTableCell>
@@ -641,15 +743,28 @@ function ChatRoomsComponent() {
                 </Text>
               </StyledTableCell>
               <StyledTableCell>
-                <Button
-                  color="primary"
-                  variant="outline"
-                  size="md"
-                  onClick={() => handleJoinRoom(room._id)}
-                  disabled={connectionStatus !== CONNECTION_STATUS.CONNECTED}
-                >
-                  입장
-                </Button>
+                <HStack gap="100">
+                  <Button
+                    color="primary"
+                    variant="outline"
+                    size="md"
+                    onClick={() => handleJoinRoom(room._id)}
+                    disabled={connectionStatus !== CONNECTION_STATUS.CONNECTED}
+                  >
+                    입장
+                  </Button>
+                  {room.creator?._id === currentUser?.id && (
+                    <Button
+                      color="danger"
+                      variant="outline"
+                      size="md"
+                      onClick={() => handleDeleteRoom(room._id)}
+                      disabled={connectionStatus !== CONNECTION_STATUS.CONNECTED}
+                    >
+                      <TrashIcon size={16} />
+                    </Button>
+                  )}
+                </HStack>
               </StyledTableCell>
             </StyledTableRow>
           ))}
@@ -776,6 +891,13 @@ function ChatRoomsComponent() {
           </Stack>
         </div>
       )}
+
+      <DeleteConfirmModal
+        isOpen={isDeleteConfirmOpen}
+        onClose={() => setIsDeleteConfirmOpen(false)}
+        onConfirm={confirmDeleteRoom}
+        roomName={roomToDelete ? rooms.find(room => room._id === roomToDelete)?.name : ''}
+      />
     </div>
   );
 }
