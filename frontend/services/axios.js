@@ -184,8 +184,19 @@ axiosInstance.interceptors.response.use(
         break;
         
       case 401:
-        errorMessage = '인증이 필요하거나 만료되었습니다.';
-        shouldLogout = true;
+        // 비밀번호 관련 에러인지 확인
+        const isPasswordError = errorData?.code === 'INVALID_ROOM_PASSWORD' ||
+                              errorData?.code === 'ROOM_PASSWORD_REQUIRED' ||
+                              errorData?.message?.includes('비밀번호') ||
+                              errorData?.message?.includes('password');
+        
+        if (isPasswordError) {
+          errorMessage = errorData?.message || '비밀번호 관련 오류가 발생했습니다.';
+          shouldLogout = false;
+        } else {
+          errorMessage = '인증이 필요하거나 만료되었습니다.';
+          shouldLogout = true;
+        }
         break;
         
       case 403:
@@ -224,6 +235,7 @@ axiosInstance.interceptors.response.use(
     enhancedError.code = errorData?.code;
     enhancedError.data = errorData;
     enhancedError.config = config;
+    enhancedError.response = error.response; // response 정보 추가
     enhancedError.originalError = error;
     enhancedError.retry = async () => {
       try {
@@ -236,6 +248,11 @@ axiosInstance.interceptors.response.use(
 
     // 401 에러 처리
     if (status === 401) {
+      // switch문에서 이미 비밀번호 관련 에러로 판단했다면 바로 에러를 던짐
+      if (!shouldLogout) {
+        throw enhancedError;
+      }
+      
       try {
         const refreshed = await authService.refreshToken();
         if (refreshed) {
