@@ -1,6 +1,6 @@
 import React from 'react';
 
-const SystemMessage = ({ msg }) => {
+const SystemMessage = React.forwardRef(({ msg }, ref) => {
   const formattedTime = new Date(msg.timestamp).toLocaleString('ko-KR', {
     year: 'numeric',
     month: 'long',
@@ -14,7 +14,7 @@ const SystemMessage = ({ msg }) => {
   console.log(formattedTime);
   
   return (
-    <div className="message-system">
+    <div className="message-system" ref={ref}>
       {msg.content}
       {formattedTime && (
         <div className="message-time">
@@ -23,6 +23,8 @@ const SystemMessage = ({ msg }) => {
       )}
     </div>
   );
-};
+});
+
+SystemMessage.displayName = 'SystemMessage';
 
 export default React.memo(SystemMessage);

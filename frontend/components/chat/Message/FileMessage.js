@@ -18,7 +18,7 @@ import ReadStatus from '../ReadStatus';
 import fileService from '../../../services/fileService';
 import authService from '../../../services/authService';
 
-const FileMessage = ({ 
+const FileMessage = React.forwardRef(({ 
   msg = {}, 
   isMine = false, 
   currentUser = null,
@@ -27,7 +27,7 @@ const FileMessage = ({
   room = null,
   messageRef,
   socketRef
-}) => {
+}, ref) => {
   const [error, setError] = useState(null);
   const [previewUrl, setPreviewUrl] = useState('');
 
@@ -331,7 +331,7 @@ const FileMessage = ({
   };
 
   return (
-    <div className="messages">
+    <div className="messages" ref={ref}>
       <div className={`message-group ${isMine ? 'mine' : 'yours'}`}>
         <div className="message-sender-info">
           {renderAvatar()}
@@ -394,7 +394,9 @@ const FileMessage = ({
       </div>
     </div>
   );
-};
+});
+
+FileMessage.displayName = 'FileMessage';
 
 FileMessage.defaultProps = {
   msg: {
