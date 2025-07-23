@@ -566,15 +566,6 @@ function ChatRoomsComponent() {
         router.push(`/chat?room=${roomId}`);
       }
     } catch (error) {
-      console.error('Room join error:', error);
-      console.log('Error details:', {
-        status: error.response?.status,
-        code: error.response?.data?.code,
-        message: error.response?.data?.message,
-        data: error.response?.data,
-        errorMessage: error.message
-      });
-      
       // 비밀번호 관련 에러인지 확인 (에러 메시지 직접 확인)
       const currentErrorMessage = error.message || '';
       const responseMessage = error.response?.data?.message || '';
@@ -600,6 +591,16 @@ function ChatRoomsComponent() {
         setShowRoomPasswordModal(true);
         return; // 에러를 더 이상 전파하지 않음
       }
+      
+      // 비밀번호 관련이 아닌 다른 오류인 경우에만 콘솔에 출력
+      console.error('Room join error:', error);
+      console.log('Error details:', {
+        status: error.response?.status,
+        code: error.response?.data?.code,
+        message: error.response?.data?.message,
+        data: error.response?.data,
+        errorMessage: error.message
+      });
       
       let errorMessage = '입장에 실패했습니다.';
       if (error.response?.status === 404) {
