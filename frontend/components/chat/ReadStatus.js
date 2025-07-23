@@ -9,8 +9,8 @@ const ReadStatus = ({
   className = '',
   socketRef = null,
   messageId = null,
-  messageRef = null, // 메시지 요소의 ref 추가
-  currentUserId = null // 현재 사용자 ID 추가
+  messageRef = null,
+  currentUserId = null
 }) => {
   const [currentReaders, setCurrentReaders] = useState(readers || []);
   const [tooltipOpen, setTooltipOpen] = useState(false);
@@ -38,7 +38,7 @@ const ReadStatus = ({
     return unreadParticipants.length;
   }, [unreadParticipants.length, messageType]);
 
-  // 메시지를 읽음으로 표시하는 함수
+  // 메시지를 읽음으로 표시하는 함수 - dependency 최소화
   const markMessageAsRead = useCallback(async () => {
     if (!messageId || !currentUserId || hasMarkedAsRead || 
         messageType === 'system' || !socketRef?.current) {
@@ -67,47 +67,7 @@ const ReadStatus = ({
     } catch (error) {
       console.error('Error marking message as read:', error);
     }
-  }, [messageId, currentUserId, hasMarkedAsRead, messageType, socketRef]);
-
-  // Intersection Observer 설정
-  useEffect(() => {
-    if (!messageRef?.current || !currentUserId || hasMarkedAsRead || messageType === 'system') {
-      return;
-    }
-
-    // 이미 읽은 메시지인지 확인
-    const isAlreadyRead = currentReaders.some(reader => 
-      reader.userId === currentUserId
-    );
-
-    if (isAlreadyRead) {
-      setHasMarkedAsRead(true);
-      return;
-    }
-
-    const observerOptions = {
-      root: null,
-      rootMargin: '0px',
-      threshold: 0.5 // 메시지의 50%가 보여야 읽음으로 처리
-    };
-
-    const handleIntersect = (entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting && !hasMarkedAsRead) {
-          markMessageAsRead();
-        }
-      });
-    };
-
-    observerRef.current = new IntersectionObserver(handleIntersect, observerOptions);
-    observerRef.current.observe(messageRef.current);
-
-    return () => {
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-      }
-    };
-  }, [messageRef, currentUserId, hasMarkedAsRead, messageType, currentReaders, markMessageAsRead]);
+  }, [messageId, currentUserId, hasMarkedAsRead, messageType]); // socketRef 제거
 
   // 툴팁 텍스트 생성
   const getTooltipText = useCallback(() => {
@@ -152,16 +112,62 @@ const ReadStatus = ({
   useEffect(() => {
     if (!socketRef?.current) return;
 
-    socketRef.current.on('messagesRead', handleReadStatusUpdate);
-    socketRef.current.on('participantsUpdate', handleParticipantsUpdate);
+    const socket = socketRef.current; // 로컬 변수로 저장
+
+    socket.on('messagesRead', handleReadStatusUpdate);
+    socket.on('participantsUpdate', handleParticipantsUpdate);
 
     return () => {
-      if (socketRef.current) {
-        socketRef.current.off('messagesRead', handleReadStatusUpdate);
-        socketRef.current.off('participantsUpdate', handleParticipantsUpdate);
+      socket.off('messagesRead', handleReadStatusUpdate);
+      socket.off('participantsUpdate', handleParticipantsUpdate);
+    };
+  }, [handleReadStatusUpdate, handleParticipantsUpdate]); // socketRef 제거
+
+  // Intersection Observer 설정 - dependency 최소화
+  useEffect(() => {
+    if (!messageRef?.current || !currentUserId || hasMarkedAsRead || messageType === 'system') {
+      return;
+    }
+
+    // 이미 읽은 메시지인지 확인
+    const isAlreadyRead = currentReaders.some(reader => 
+      reader.userId === currentUserId
+    );
+
+    if (isAlreadyRead) {
+      setHasMarkedAsRead(true);
+      return;
+    }
+
+    const observerOptions = {
+      root: null,
+      rootMargin: '0px',
+      threshold: 0.5
+    };
+
+    const handleIntersect = (entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting && !hasMarkedAsRead) {
+          // socketRef 직접 확인
+          if (socketRef?.current) {
+            markMessageAsRead();
+          }
+        }
+      });
+    };
+
+    const observer = new IntersectionObserver(handleIntersect, observerOptions);
+    observer.observe(messageRef.current);
+
+    // ref에 observer 저장
+    observerRef.current = observer;
+
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
       }
     };
-  }, [socketRef, handleReadStatusUpdate, handleParticipantsUpdate]);
+  }, [messageRef, currentUserId, hasMarkedAsRead, messageType, currentReaders]); // markMessageAsRead 제거
 
   const toggle = () => setTooltipOpen(prev => !prev);
 
