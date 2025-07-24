@@ -1,0 +1,22 @@
+config:
+  target: "http://localhost:5001"
+  phases:
+    - duration: 60
+      arrivalRate: 10   # 초당 10명씩 1분간
+  processor: "./ai-loadtest-processor.js"
+  payload:
+    # (원하면 여러 유저/방을 미리 정의 가능)
+    # - path: "users.csv"
+    #   fields: [email, password]
+scenarios:
+  - name: "AI 챗봇 대화 부하"
+    flow:
+      - function: "loginAndJoinRoom"
+      - post:
+          url: "/api/rooms/{{ roomId }}/messages"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          json:
+            content: "@Wayne AI 부하테스트 중이야!"
+            type: "text"
+      - think: 1 

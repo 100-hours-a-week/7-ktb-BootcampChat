@@ -1,0 +1,19 @@
+config:
+  target: "http://127.0.0.1:5001"
+  phases:
+    - duration: 120
+      arrivalRate: 100   # 초당 500명 동시 요청
+      name: "AI 챗봇 500명 동시 부하"
+  processor: "./ai-loadtest-processor.js"
+scenarios:
+  - name: "AI 챗봇 대화 부하 (500명)"
+    flow:
+      - function: "loginAndJoinRoom"
+      - post:
+          url: "/api/rooms/{{ roomId }}/messages"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          json:
+            content: "@Wayne AI 500명 동시 부하테스트!"
+            type: "text"
+      - think: 1 

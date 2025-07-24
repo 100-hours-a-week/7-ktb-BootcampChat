@@ -117,4 +117,12 @@ RoomSchema.methods.removePassword = async function() {
   }
 };
 
+// Room 인덱스 최적화
+RoomSchema.index({ createdAt: -1 });
+RoomSchema.index({ name: 1 });
+RoomSchema.index({ participants: 1 });
+RoomSchema.index({ creator: 1, createdAt: -1 });
+RoomSchema.index({ hasPassword: 1, createdAt: -1 });
+RoomSchema.index({ participants: 1, createdAt: -1 });
+
 module.exports = mongoose.model('Room', RoomSchema);

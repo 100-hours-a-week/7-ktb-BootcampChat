@@ -743,6 +743,7 @@ function ChatRoomsComponent() {
     setRoomNameToJoin('');
     setPasswordError('');
     setPasswordRetryCount(0);
+  };
 
   const handleDeleteRoom = async (roomId) => {
     if (connectionStatus !== CONNECTION_STATUS.CONNECTED) {
@@ -996,7 +997,7 @@ function ChatRoomsComponent() {
         loading={passwordLoading}
         error={passwordError}
         retryCount={passwordRetryCount}
-
+      />
       <DeleteConfirmModal
         isOpen={isDeleteConfirmOpen}
         onClose={() => setIsDeleteConfirmOpen(false)}
