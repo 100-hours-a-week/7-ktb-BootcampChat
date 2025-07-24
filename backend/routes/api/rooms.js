@@ -326,6 +326,69 @@ router.post('/:roomId/join', auth, async (req, res) => {
   }
 });
 
+// 채팅방 삭제
+router.delete('/:roomId', auth, async (req, res) => {
+  try {
+    const room = await Room.findById(req.params.roomId);
+    
+    if (!room) {
+      return res.status(404).json({
+        success: false,
+        message: '채팅방을 찾을 수 없습니다.'
+      });
+    }
+
+    // 방 생성자만 삭제할 수 있도록 권한 확인
+    if (room.creator.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: '채팅방을 삭제할 권한이 없습니다. 방 생성자만 삭제할 수 있습니다.'
+      });
+    }
+
+    // 채팅방의 모든 메시지 조회
+    const Message = require('../../models/Message');
+    const messages = await Message.find({ room: room._id });
+    
+    // 파일 메시지에서 파일 ID 추출
+    const fileIds = messages
+      .filter(msg => msg.type === 'file' && msg.file)
+      .map(msg => msg.file);
+
+    // 파일 삭제
+    if (fileIds.length > 0) {
+      const File = require('../../models/File');
+      await File.deleteMany({ _id: { $in: fileIds } });
+    }
+
+    // 메시지 삭제
+    await Message.deleteMany({ room: room._id });
+
+    // 채팅방 삭제
+    await Room.findByIdAndDelete(room._id);
+
+    // Socket.IO를 통해 채팅방 삭제 알림
+    if (io) {
+      io.to('room-list').emit('roomDeleted', room._id);
+      io.to(room._id).emit('roomDeleted', {
+        message: '채팅방이 삭제되었습니다.'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: '채팅방이 성공적으로 삭제되었습니다.'
+    });
+  } catch (error) {
+    console.error('채팅방 삭제 에러:', error);
+    res.status(500).json({
+      success: false,
+      message: '서버 에러가 발생했습니다.',
+      error: error.message
+    });
+  }
+});
+
 module.exports = {
   router,
   initializeSocket

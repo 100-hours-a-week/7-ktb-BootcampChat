@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   AlertCircle, 
-  WifiOff 
+  WifiOff,
+  TrashIcon
 } from 'lucide-react';
 import { Button, Text, Callout, Card, Badge, Avatar } from '@vapor-ui/core';
 import { Flex, Box, HStack } from '../components/ui/Layout';
@@ -10,8 +11,62 @@ import { useChatRoom } from '../hooks/useChatRoom';
 import ChatMessages from '../components/chat/ChatMessages';
 import ChatInput from '../components/chat/ChatInput';
 import { generateColorFromEmail, getContrastTextColor } from '../utils/colorUtils';
+import { useRouter } from 'next/router';
+import axiosInstance from '../services/axios';
+import { Toast } from '../components/Toast';
+
+// 삭제 확인 모달 컴포넌트
+const DeleteConfirmModal = ({ isOpen, onClose, onConfirm, roomName }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-overlay" style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1000
+    }}>
+      <div className="modal-content" style={{
+        backgroundColor: 'var(--vapor-color-normal)',
+        borderRadius: 'var(--vapor-radius-lg)',
+        padding: 'var(--vapor-space-400)',
+        maxWidth: '400px',
+        width: '90%',
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+      }}>
+        <Text typography="heading4" style={{ marginBottom: 'var(--vapor-space-200)' }}>
+          채팅방 삭제
+        </Text>
+        <HStack gap="200" justify="flex-end">
+          <Button
+            variant="outline"
+            color="secondary"
+            onClick={onClose}
+          >
+            취소
+          </Button>
+          <Button
+            color="danger"
+            onClick={onConfirm}
+          >
+            삭제
+          </Button>
+        </HStack>
+      </div>
+    </div>
+  );
+};
 
 const ChatPage = () => {
+  const router = useRouter();
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  
   const {
     room,
     messages,
@@ -51,6 +106,35 @@ const ChatPage = () => {
     hasMoreMessages,
     handleLoadMore
   } = useChatRoom();
+
+  const handleDeleteRoom = async () => {
+    if (!room?._id) return;
+
+    try {
+      const response = await axiosInstance.delete(`/api/rooms/${room._id}`, {
+        timeout: 5000
+      });
+
+      if (response.data.success) {
+        setIsDeleteConfirmOpen(false);
+        Toast.success('채팅방이 삭제되었습니다.');
+        router.push('/chat-rooms');
+      } else {
+        throw new Error('DELETE_FAILED');
+      }
+    } catch (error) {
+      console.error('Room delete error:', error);
+      let errorMessage = '삭제에 실패했습니다.';
+      if (error.response?.status === 404) {
+        errorMessage = '채팅방을 찾을 수 없습니다.';
+      } else if (error.response?.status === 403) {
+        errorMessage = '채팅방 삭제 권한이 없습니다.';
+      }
+      Toast.error(error.response?.data?.message || errorMessage);
+    }
+  };
+
+  const isRoomCreator = room?.creator?._id === currentUser?.id;
 
   const renderParticipants = () => {
     if (!room?.participants) return null;
@@ -248,9 +332,22 @@ const ChatPage = () => {
               </Text>
               {renderParticipants()}
             </Flex>
-            <Badge color={status.color === 'success' ? 'success' : status.color === 'warning' ? 'warning' : 'danger'}>
-              {status.label}
-            </Badge>
+            <HStack gap="200" align="center">
+              <Badge color={status.color === 'success' ? 'success' : status.color === 'warning' ? 'warning' : 'danger'}>
+                {status.label}
+              </Badge>
+              {isRoomCreator && (
+                <Button
+                  color="danger"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsDeleteConfirmOpen(true)}
+                  disabled={loading}
+                >
+                  <TrashIcon size={16} />
+                </Button>
+              )}
+            </HStack>
           </Flex>
         </Card.Header>
 
@@ -290,6 +387,12 @@ const ChatPage = () => {
           />
         </Card.Footer>
       </Card.Root>
+      <DeleteConfirmModal
+        isOpen={isDeleteConfirmOpen}
+        onClose={() => setIsDeleteConfirmOpen(false)}
+        onConfirm={handleDeleteRoom}
+        roomName={room?.name}
+      />
     </div>
   );
 };
