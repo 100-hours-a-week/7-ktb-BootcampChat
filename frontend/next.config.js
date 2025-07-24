@@ -7,6 +7,7 @@ const nextConfig = {
     buildActivity: true,
     buildActivityPosition: 'bottom-right'
   },
+  output: 'export',
   // 개발 환경에서만 더 자세한 에러 로깅
   ...(process.env.NODE_ENV === 'development' && {
     experimental: {
