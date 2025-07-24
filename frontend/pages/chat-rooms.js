@@ -758,7 +758,7 @@ function ChatRoomsComponent() {
         
         <Card.Body className="card-body">
           <Stack gap="300" align="center">
-            <Text typography="heading3">채팅방 목록</Text>
+            <Text typography="heading3" data-testid="chat-rooms-title">채팅방 목록</Text>
             <HStack gap="200">
               <Badge color={STATUS_CONFIG[connectionStatus].color === 'success' ? 'success' : STATUS_CONFIG[connectionStatus].color === 'warning' ? 'warning' : 'danger'}>
                 {STATUS_CONFIG[connectionStatus].label}
@@ -890,7 +890,7 @@ const ChatRooms = dynamic(() => Promise.resolve(ChatRoomsComponent), {
       <Card.Root className="chat-rooms-card">
         <Card.Body className="card-body">
           <Stack gap="300" align="center">
-            <Text typography="heading3">채팅방 목록</Text>
+            <Text typography="heading3" data-testid="chat-rooms-title-loading">채팅방 목록</Text>
           </Stack>
           <Box mt="400">
             <LoadingIndicator text="로딩 중..." />

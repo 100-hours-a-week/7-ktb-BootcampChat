@@ -136,18 +136,38 @@ test.describe('메시징 테스트', () => {
 
     // 메시지 전송 및 대기
     const testMessage = '이 메시지에 반응해보세요!';
+    await user2.waitForSelector('.chat-input-textarea:not([disabled])', { timeout: 30000 });
     await helpers.sendMessage(user1, testMessage);
 
-    // 메시지가 완전히 로드될 때까지 대기
-    await user2.waitForLoadState('networkidle');
-    // await user2.waitForSelector(`.message-content:has-text("${testMessage}")`, {
-    //   state: 'visible',
-    //   timeout: 30000
-    // });
+    // user1 화면에서 메시지 표시 확인
+    await user1.waitForSelector(`.message-content:has-text("${testMessage}")`, {
+      state: 'visible',
+      timeout: 10000
+    });
 
-    // 메시지에 호버 및 반응 버튼 클릭
+    // user2 화면에서 메시지 표시 확인
+    try {
+      await user2.waitForSelector(`.message-content:has-text("${testMessage}")`, {
+        state: 'visible',
+        timeout: 30000
+      });
+    } catch (e) {
+      // 디버깅용: user2 화면의 모든 메시지 출력
+      const allMessages = await user2.$$eval('.message-content', els => els.map(el => el.textContent));
+      console.log('user2가 받은 메시지 목록:', allMessages);
+      await user2.screenshot({ path: 'user2-message-debug.png', fullPage: true });
+      throw e;
+    }
+
+    // 메시지 액션 영역이 로드될 때까지 대기
+    await user2.waitForSelector('.message-actions', {
+      state: 'visible',
+      timeout: 30000
+    });
+
+    // 메시지에 호버하여 액션 버튼 표시
     const messageElement = user2.locator('.message-actions').last();
-    // await messageElement.hover();
+    await messageElement.hover();
     
     // 반응 버튼이 나타날 때까지 대기 후 클릭
     const actionButton = messageElement.locator('button[title="리액션 추가"]');
