@@ -49,35 +49,34 @@ test.describe('비디오 업로드 테스트', () => {
       timeout: 30000
     });
     
-    // 파일 입력 필드 찾기 및 파일 설정
-    const fileInput = await uploader.waitForSelector('input[type="file"]', {
-      state: 'attached',
-      timeout: 30000
-    });
-    await fileInput.setInputFiles(videoPath);
-    
-    // 비디오 프리뷰 확인
-    await uploader.waitForSelector('.file-preview-item video', {
+    // 채팅 입력창이 활성화될 때까지 대기
+    await uploader.waitForSelector('.chat-input-textarea:not([disabled])', {
       state: 'visible',
       timeout: 30000
     });
     
-    // 프리뷰 안정화를 위한 대기
+    // 파일 입력 필드에 파일 설정
+    const fileInput = await uploader.locator('input[type="file"]');
+    await fileInput.setInputFiles(videoPath);
+    
+    // FilePreview 컴포넌트가 나타날 때까지 대기
+    await uploader.waitForSelector('.file-preview-item, .file-preview', {
+      state: 'visible',
+      timeout: 30000
+    });
+    
     await uploader.waitForTimeout(1000);
 
-    // 전송 버튼 찾기
+    // 전송 버튼 클릭
     const submitButton = await uploader.waitForSelector(
-      'button[type="submit"], .chat-input-actions button[title*="보내기"], .chat-input-actions button.send-button', 
+      'button[aria-label="메시지 보내기"], button:has-text("보내기")',
       {
         state: 'visible',
         timeout: 30000
       }
     );
     
-    // 버튼이 클릭 가능한 상태가 될 때까지 대기
     await submitButton.waitForElementState('stable');
-    
-    // 파일 업로드 시작
     await submitButton.click();
 
     // 업로드 진행 표시 사라질 때까지 대기 (있는 경우)

@@ -169,6 +169,59 @@ exports.updateProfile = async (req, res) => {
   }
 };
 
+exports.changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    // 입력값 검증
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: '현재 비밀번호와 새 비밀번호를 모두 입력해주세요.'
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: '새 비밀번호는 6자 이상이어야 합니다.'
+      });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: '사용자를 찾을 수 없습니다.'
+      });
+    }
+
+    // User 모델의 changePassword 메서드 사용
+    await user.changePassword(currentPassword, newPassword);
+
+    res.json({
+      success: true,
+      message: '비밀번호가 성공적으로 변경되었습니다.'
+    });
+
+  } catch (error) {
+    console.error('Change password error:', error);
+    
+    // User 모델에서 throw한 에러 처리
+    if (error.message === '현재 비밀번호가 일치하지 않습니다.') {
+      return res.status(400).json({
+        success: false,
+        message: error.message
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: '비밀번호 변경 중 오류가 발생했습니다.'
+    });
+  }
+};
+
 // 프로필 이미지 업로드
 exports.uploadProfileImage = async (req, res) => {
   try {

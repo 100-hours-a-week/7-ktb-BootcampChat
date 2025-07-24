@@ -270,7 +270,7 @@ const Register = () => {
       {/* Success Modal - Bootstrap Modal */}
       {showSuccessModal && (
         <>
-          <div className="modal fade show d-block" tabIndex="-1">
+          <div className="modal fade show d-block" tabIndex="-1" data-testid="success-modal">
             <div className="modal-dialog modal-dialog-centered">
               <div className="modal-content">
                 <div className="modal-header">

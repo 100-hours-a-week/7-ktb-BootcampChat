@@ -38,7 +38,9 @@ export const Modal = ({
     };
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    return null;
+  }
 
   return (
     <div
@@ -48,11 +50,11 @@ export const Modal = ({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: 'rgba(0, 0, 0, 0.5)', // 원래 배경색으로 복원
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 1050,
+        zIndex: 99999, // 매우 높은 z-index
         padding: 'var(--vapor-space-200)',
       }}
       onClick={(e) => {
@@ -70,6 +72,8 @@ export const Modal = ({
           width: '100%',
           maxHeight: '90vh',
           overflow: 'auto',
+          position: 'relative', // 추가
+          zIndex: 100000, // 추가
         }}
         className={className}
         {...props}

@@ -4,7 +4,7 @@ import MessageContent from './MessageContent';
 import MessageActions from './MessageActions';
 import ReadStatus from '../ReadStatus';
 
-const AIMessage = ({ 
+const AIMessage = React.forwardRef(({ 
   msg = {}, 
   isStreaming = false,                   
   isMine = false, 
@@ -14,7 +14,7 @@ const AIMessage = ({
   room = null,
   messageRef,
   socketRef
-}) => {
+}, ref) => {
   const formattedTime = new Date(msg.timestamp).toLocaleString('ko-KR', {
     year: 'numeric',
     month: 'long',
@@ -49,7 +49,7 @@ const AIMessage = ({
   };
 
   return (
-    <div className="message-group yours">
+    <div className="message-group yours" ref={ref}>
       <div className="message-sender-info">
         <PersistentAvatar 
           user={aiUser}
@@ -95,11 +95,14 @@ const AIMessage = ({
       />
     </div>
   );
-};
+});
+
+AIMessage.displayName = 'AIMessage';
 
 AIMessage.defaultProps = {
   msg: {},
   isStreaming: false,
+  isMine: false,
   currentUser: null,
   onReactionAdd: () => {},
   onReactionRemove: () => {},

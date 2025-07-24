@@ -275,10 +275,19 @@ router.post('/:roomId/join', auth, async (req, res) => {
 
     // 비밀번호 확인
     if (room.hasPassword) {
+      if (!password) {
+        return res.status(401).json({
+          success: false,
+          code: 'ROOM_PASSWORD_REQUIRED',
+          message: '이 채팅방은 비밀번호가 필요합니다.'
+        });
+      }
+      
       const isPasswordValid = await room.checkPassword(password);
       if (!isPasswordValid) {
         return res.status(401).json({
           success: false,
+          code: 'INVALID_ROOM_PASSWORD',
           message: '비밀번호가 일치하지 않습니다.'
         });
       }

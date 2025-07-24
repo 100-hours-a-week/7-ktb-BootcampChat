@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import dynamic from 'next/dynamic';
 import { LockIcon, ErrorCircleIcon, NetworkIcon, RefreshOutlineIcon, GroupIcon, TrashIcon } from '@vapor-ui/icons';
@@ -10,6 +10,7 @@ import authService from '../services/authService';
 import axiosInstance from '../services/axios';
 import { withAuth } from '../middleware/withAuth';
 import { Toast } from '../components/Toast';
+import RoomPasswordModal from '../components/RoomPasswordModal';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -64,18 +65,7 @@ const TableWrapper = ({ children, onScroll, loadingMore, hasMore, rooms }) => {
       const { scrollHeight, scrollTop, clientHeight } = container;
       const distanceToBottom = scrollHeight - (scrollTop + clientHeight);
 
-      console.log('Scroll check:', {
-        scrollHeight,
-        scrollTop,
-        clientHeight,
-        distanceToBottom,
-        loadingMore,
-        hasMore,
-        timeSinceLastCheck: now - lastScrollTime.current
-      });
-
       if (distanceToBottom < SCROLL_THRESHOLD && !loadingMore && hasMore) {
-        console.log('Triggering load more...');
         lastScrollTime.current = now; // 마지막 체크 시간 업데이트
         onScroll();
         return;
@@ -88,17 +78,7 @@ const TableWrapper = ({ children, onScroll, loadingMore, hasMore, rooms }) => {
         const { scrollHeight, scrollTop, clientHeight } = container;
         const distanceToBottom = scrollHeight - (scrollTop + clientHeight);
 
-        console.log('Debounced scroll check:', {
-          scrollHeight,
-          scrollTop,
-          clientHeight,
-          distanceToBottom,
-          loadingMore,
-          hasMore
-        });
-
         if (distanceToBottom < SCROLL_THRESHOLD && !loadingMore && hasMore) {
-          console.log('Triggering load more (debounced)...');
           onScroll();
         }
 
@@ -227,8 +207,16 @@ function ChatRoomsComponent() {
   const [hasMore, setHasMore] = useState(true);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [joiningRoom, setJoiningRoom] = useState(false);
+
+  const [showRoomPasswordModal, setShowRoomPasswordModal] = useState(false);
+  const [roomIdToJoin, setRoomIdToJoin] = useState(null);
+  const [roomNameToJoin, setRoomNameToJoin] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordRetryCount, setPasswordRetryCount] = useState(0);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [roomToDelete, setRoomToDelete] = useState(null);
+
 
   // Refs
   const socketRef = useRef(null);
@@ -609,20 +597,21 @@ function ChatRoomsComponent() {
     };
   }, [currentUser, handleAuthError]);
 
-  const handleJoinRoom = async (roomId) => {
-    if (connectionStatus !== CONNECTION_STATUS.CONNECTED) {
+  const handleJoinRoom = async (roomId, password = null) => {
+    if (!currentUser) {
       setError({
-        title: '채팅방 입장 실패',
-        message: '서버와 연결이 끊어져 있습니다.',
+        title: '로그인 필요',
+        message: '채팅방에 입장하려면 먼저 로그인해주세요.',
         type: 'danger'
       });
       return;
     }
-
-    setJoiningRoom(true);
-
+  
     try {
-      const response = await axiosInstance.post(`/api/rooms/${roomId}/join`, {}, {
+      // 비밀번호 포함하여 요청
+      const requestBody = password ? { password } : {};
+      
+      const response = await axiosInstance.post(`/api/rooms/${roomId}/join`, requestBody, {
         timeout: 5000
       });
       
@@ -630,7 +619,41 @@ function ChatRoomsComponent() {
         router.push(`/chat?room=${roomId}`);
       }
     } catch (error) {
+      // 비밀번호 관련 에러인지 확인 (에러 메시지 직접 확인)
+      const currentErrorMessage = error.message || '';
+      const responseMessage = error.response?.data?.message || '';
+      
+      if (error.response?.status === 401 || 
+          currentErrorMessage.includes('비밀번호') || 
+          currentErrorMessage.includes('password') ||
+          responseMessage.includes('비밀번호') ||
+          responseMessage.includes('password')) {
+        
+        // 비밀번호가 틀렸거나 필요한 경우 - 비밀번호 입력 모달 표시
+        const room = rooms.find(r => r._id === roomId);
+        setRoomIdToJoin(roomId);
+        setRoomNameToJoin(room?.name || '채팅방');
+        setPasswordError('');
+        if (password) {
+          // 비밀번호를 입력했는데 틀린 경우 재시도 횟수 증가
+          setPasswordRetryCount(prev => prev + 1);
+        } else {
+          // 처음 시도하는 경우 0으로 설정
+          setPasswordRetryCount(0);
+        }
+        setShowRoomPasswordModal(true);
+        return; // 에러를 더 이상 전파하지 않음
+      }
+      
+      // 비밀번호 관련이 아닌 다른 오류인 경우에만 콘솔에 출력
       console.error('Room join error:', error);
+      console.log('Error details:', {
+        status: error.response?.status,
+        code: error.response?.data?.code,
+        message: error.response?.data?.message,
+        data: error.response?.data,
+        errorMessage: error.message
+      });
       
       let errorMessage = '입장에 실패했습니다.';
       if (error.response?.status === 404) {
@@ -644,10 +667,82 @@ function ChatRoomsComponent() {
         message: error.response?.data?.message || errorMessage,
         type: 'danger'
       });
-    } finally {
-      setJoiningRoom(false);
     }
   };
+
+  const handlePasswordSubmit = async (password) => {
+    if (!roomIdToJoin) return;
+
+    setPasswordLoading(true);
+    setPasswordError('');
+
+    try {
+      console.log('Attempting to join room with password...');
+      
+      const response = await axiosInstance.post(`/api/rooms/${roomIdToJoin}/join`, { password }, {
+        timeout: 5000
+      });
+
+      console.log('Password submit response:', response.data);
+
+      if (response.data.success) {
+        console.log('Password submit successful, navigating...');
+        // 성공시 모달 닫고 채팅방으로 이동
+        setShowRoomPasswordModal(false);
+        setRoomIdToJoin(null);
+        setRoomNameToJoin('');
+        setPasswordRetryCount(0);
+        setPasswordError('');
+        
+        // 페이지 이동 (새로고침으로 안전하게 이동)
+        console.log('Redirecting to chat room...');
+        window.location.href = `/chat?room=${roomIdToJoin}`;
+        return;
+      }
+      
+      // success가 false인 경우
+      throw new Error(response.data?.message || '입장에 실패했습니다.');
+      
+    } catch (error) {
+      console.error('Room join with password error:', error);
+      
+      // 에러 메시지에서 비밀번호 관련 에러인지 확인
+      const errorMessage = error.message || '';
+      const responseMessage = error.response?.data?.message || '';
+      
+      if (error.response?.status === 401 && 
+          (error.response?.data?.code === 'INVALID_ROOM_PASSWORD' || 
+           errorMessage.includes('비밀번호') ||
+           responseMessage.includes('비밀번호'))) {
+        // 비밀번호가 틀린 경우 - 모달 유지하고 에러 표시
+        setPasswordError(responseMessage || errorMessage || '비밀번호가 일치하지 않습니다.');
+        setPasswordRetryCount(prev => prev + 1);
+      } else {
+        // 다른 에러인 경우 - 모달 닫고 일반 에러 표시
+        setShowRoomPasswordModal(false);
+        setRoomIdToJoin(null);
+        setRoomNameToJoin('');
+        setPasswordRetryCount(0);
+        setPasswordError('');
+        
+        setError({
+          title: '채팅방 입장 실패',
+          message: responseMessage || errorMessage || '입장에 실패했습니다.',
+          type: 'danger'
+        });
+      }
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
+
+  const handlePasswordModalClose = () => {
+    setShowRoomPasswordModal(false);
+    setRoomIdToJoin(null);
+    setRoomNameToJoin('');
+    setPasswordError('');
+    setPasswordRetryCount(0);
 
   const handleDeleteRoom = async (roomId) => {
     if (connectionStatus !== CONNECTION_STATUS.CONNECTED) {
@@ -780,7 +875,7 @@ function ChatRoomsComponent() {
         
         <Card.Body className="card-body">
           <Stack gap="300" align="center">
-            <Text typography="heading3">채팅방 목록</Text>
+            <Text typography="heading3" data-testid="chat-rooms-title">채팅방 목록</Text>
             <HStack gap="200">
               <Badge color={STATUS_CONFIG[connectionStatus].color === 'success' ? 'success' : STATUS_CONFIG[connectionStatus].color === 'warning' ? 'warning' : 'danger'}>
                 {STATUS_CONFIG[connectionStatus].label}
@@ -892,6 +987,16 @@ function ChatRoomsComponent() {
         </div>
       )}
 
+
+      <RoomPasswordModal
+        isOpen={showRoomPasswordModal}
+        onClose={handlePasswordModalClose}
+        onSubmit={handlePasswordSubmit}
+        roomName={roomNameToJoin}
+        loading={passwordLoading}
+        error={passwordError}
+        retryCount={passwordRetryCount}
+
       <DeleteConfirmModal
         isOpen={isDeleteConfirmOpen}
         onClose={() => setIsDeleteConfirmOpen(false)}
@@ -909,7 +1014,7 @@ const ChatRooms = dynamic(() => Promise.resolve(ChatRoomsComponent), {
       <Card.Root className="chat-rooms-card">
         <Card.Body className="card-body">
           <Stack gap="300" align="center">
-            <Text typography="heading3">채팅방 목록</Text>
+            <Text typography="heading3" data-testid="chat-rooms-title-loading">채팅방 목록</Text>
           </Stack>
           <Box mt="400">
             <LoadingIndicator text="로딩 중..." />

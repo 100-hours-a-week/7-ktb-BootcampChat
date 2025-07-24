@@ -18,6 +18,7 @@ app.set('trust proxy', 1);
 // CORS 설정
 const corsOptions = {
   origin: [
+    'https://chat.goorm-ktb-007.goorm.team',
     'https://bootcampchat-fe.run.goorm.site',
     'https://bootcampchat-hgxbv.dev-k8s.arkain.io',
     'http://localhost:3000',
@@ -100,19 +101,82 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 서버 시작
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => {
-    console.log('MongoDB Connected');
+// 클러스터 및 최적화 서비스 초기화
+const socketClusterService = require('./services/socketClusterService');
+const queueService = require('./services/queueService');
+const monitoringService = require('./services/monitoringService');
+const rateLimiter = require('./middleware/rateLimiter');
+
+// 클러스터 모드 시작
+const shouldStartServer = process.env.NODE_ENV === 'production' 
+  ? socketClusterService.startCluster()
+  : true;
+
+if (shouldStartServer) {
+  // MongoDB 연결 최적화
+  mongoose.connect(process.env.MONGO_URI, {
+    maxPoolSize: 50, // 최대 연결 풀 크기
+    minPoolSize: 5,  // 최소 연결 풀 크기
+    maxIdleTimeMS: 30000, // 30초 후 유휴 연결 종료
+    serverSelectionTimeoutMS: 5000, // 5초 서버 선택 타임아웃
+    socketTimeoutMS: 45000, // 45초 소켓 타임아웃
+    bufferMaxEntries: 0, // 버퍼 비활성화 (즉시 에러)
+    bufferCommands: false
+  })
+  .then(async () => {
+    console.log('✅ MongoDB Connected with optimized settings');
+    
+    // Socket.IO Redis Adapter 설정
+    const io = require('./sockets/chat')(server);
+    await socketClusterService.setupRedisAdapter(io);
+    
+    // 연결 풀 관리
+    socketClusterService.manageConnectionPool(io);
+    
+    // 서버 상태 모니터링
+    socketClusterService.monitorServerHealth(io);
+    
+    // Rate Limiter 적용
+    app.use('/api/auth', rateLimiter.getAuthLimiter());
+    app.use('/api/messages', rateLimiter.getMessageLimiter());
+    app.use('/api/files', rateLimiter.getFileUploadLimiter());
+    app.use('/api/rooms', rateLimiter.getRoomCreationLimiter());
+    app.use('/api/ai', rateLimiter.getAILimiter());
+    app.use('/api', rateLimiter.getGlobalLimiter());
+    
+    // 모니터링 미들웨어
+    app.use(monitoringService.getRequestTracker());
+    
+    // 스케줄링된 작업 시작
+    queueService.scheduleCleanupTasks();
+    
     server.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server running on port ${PORT}`);
-      console.log('Environment:', process.env.NODE_ENV);
+      console.log(`🚀 Server running on port ${PORT} (PID: ${process.pid})`);
+      console.log('🔥 Environment:', process.env.NODE_ENV);
+      console.log('📊 Cluster mode:', process.env.NODE_ENV === 'production' ? 'enabled' : 'disabled');
+      console.log('💾 Redis caching: enabled');
+      console.log('⚡ Queue processing: enabled');
+      console.log('📈 Monitoring: enabled');
+      console.log('🛡️ Rate limiting: enabled');
       console.log('API Base URL:', `http://0.0.0.0:${PORT}/api`);
     });
+    
+    // 서버 종료 시 정리 작업
+    process.on('SIGTERM', async () => {
+      console.log('🔄 SIGTERM received, shutting down gracefully...');
+      await socketClusterService.cleanup();
+      await queueService.cleanup();
+      server.close(() => {
+        console.log('✅ Server closed');
+        process.exit(0);
+      });
+    });
+    
   })
   .catch(err => {
-    console.error('Server startup error:', err);
+    console.error('❌ Server startup error:', err);
     process.exit(1);
   });
+}
 
 module.exports = { app, server };
