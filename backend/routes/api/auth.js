@@ -3,6 +3,10 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../../middleware/auth');
 const authController = require('../../controllers/authController');
+// const AdvancedRateLimiter = require('../../middleware/rateLimiter'); // 부하테스트용 제거
+
+// Rate Limiter 초기화 (부하테스트용 제거)
+// const rateLimiter = new AdvancedRateLimiter();
 
 // 상태 확인 라우트
 router.get('/', (req, res) => {
@@ -18,7 +22,7 @@ router.get('/', (req, res) => {
   });
 });
 
-// Public routes
+// Public routes (부하테스트용 Rate Limiting 제거)
 router.post('/register', authController.register);
 router.post('/login', authController.login);
 router.post('/verify-token', authController.verifyToken); // GET /verify-token 라우트 추가
