@@ -34,7 +34,7 @@ export const useReactionHandling = (socketRef, currentUser, messages, setMessage
         })
       );
 
-      await socketRef.current.emit('messageReaction', {
+      socketRef.current.emit('messageReaction', {
         messageId,
         reaction,
         type: 'add'
@@ -79,7 +79,7 @@ export const useReactionHandling = (socketRef, currentUser, messages, setMessage
         })
       );
 
-      await socketRef.current.emit('messageReaction', {
+      socketRef.current.emit('messageReaction', {
         messageId,
         reaction,
         type: 'remove'

@@ -49,30 +49,45 @@ test.describe('이미지 업로드 테스트', () => {
       timeout: 30000
     });
     
-    // 파일 입력 필드 대기 및 파일 설정
-    const fileInput = await uploader.waitForSelector('input[type="file"]', {
-      state: 'attached',
-      timeout: 30000
-    });
-    await fileInput.setInputFiles(imagePath);
-
-    // 파일 프리뷰 표시 및 안정화 대기
-    await uploader.waitForSelector('.file-preview-item img', {
+    // 채팅 입력창이 활성화될 때까지 대기
+    await uploader.waitForSelector('.chat-input-textarea:not([disabled])', {
       state: 'visible',
       timeout: 30000
     });
-    await uploader.waitForTimeout(1000); // 프리뷰 안정화를 위한 잠시 대기
+    
+    // 파일 첨부 버튼 클릭 (AttachFileOutlineIcon)
+    const attachButton = await uploader.waitForSelector('button[aria-label="파일 첨부"]', {
+      state: 'visible',
+      timeout: 30000
+    });
+    
+    // 파일 입력 필드에 파일 설정 (숨겨진 input을 직접 조작)
+    const fileInput = await uploader.locator('input[type="file"]');
+    await fileInput.setInputFiles(imagePath);
+    
+    // FilePreview 컴포넌트가 나타날 때까지 대기
+    await uploader.waitForSelector('.file-preview-item, .file-preview', {
+      state: 'visible',
+      timeout: 30000
+    });
+    
+    // 이미지 미리보기가 로드될 때까지 대기
+    await uploader.waitForSelector('img', {
+      state: 'visible',
+      timeout: 10000
+    });
+    
+    await uploader.waitForTimeout(1000); // 프리뷰 안정화 대기
 
-    // 전송 버튼 찾기 및 클릭
+    // 전송 버튼 클릭
     const submitButton = await uploader.waitForSelector(
-      'button[type="submit"], .chat-input-actions button[title*="보내기"], .chat-input-actions button.send-button', 
+      'button[aria-label="메시지 보내기"], button:has-text("보내기")', 
       {
         state: 'visible',
         timeout: 30000
       }
     );
     
-    // 버튼이 클릭 가능한 상태가 될 때까지 대기
     await submitButton.waitForElementState('stable');
     await submitButton.click();
 
