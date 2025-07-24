@@ -4,6 +4,9 @@ const auth = require('../../middleware/auth');
 const Room = require('../../models/Room');
 const User = require('../../models/User');
 const { rateLimit } = require('express-rate-limit');
+const cache = require('../../services/simpleCache');
+const memoryCache = require('../../services/memoryCache');
+const queryOptimizer = require('../../services/queryOptimizer');
 let io;
 
 // 속도 제한 설정
@@ -72,7 +75,7 @@ router.get('/health', async (req, res) => {
   }
 });
 
-// 채팅방 목록 조회 (페이징 적용)
+// 채팅방 목록 조회 (페이징 적용 + 캐싱)
 router.get('/', [limiter, auth], async (req, res) => {
   try {
     // 쿼리 파라미터 검증 (페이지네이션)
@@ -95,17 +98,39 @@ router.get('/', [limiter, auth], async (req, res) => {
       filter.name = { $regex: req.query.search, $options: 'i' };
     }
 
+    // 🚀 이중 캐싱: 메모리 → Redis 순서로 확인 (검색이 없는 경우만)
+    if (!req.query.search) {
+      const cacheKey = `rooms:${page}:${pageSize}:${sortField}:${sortOrder}`;
+      
+      // 1차: 초고속 메모리 캐시 확인
+      let cachedResult = memoryCache.get(cacheKey);
+      if (cachedResult) {
+        console.log('⚡ 메모리 캐시 히트');
+        return res.json(cachedResult);
+      }
+      
+      // 2차: Redis 캐시 확인
+      cachedResult = await cache.getRoomList(page, pageSize, sortField, sortOrder);
+      if (cachedResult) {
+        // Redis에서 가져온 데이터를 메모리에도 저장 (60초)
+        memoryCache.set(cacheKey, cachedResult, 60);
+        return res.json(cachedResult);
+      }
+    }
+
     // 총 문서 수 조회
     const totalCount = await Room.countDocuments(filter);
 
-    // 채팅방 목록 조회 with 페이지네이션
-    const rooms = await Room.find(filter)
-      .populate('creator', 'name email')
-      .populate('participants', 'name email')
-      .sort({ [sortField]: sortOrder === 'desc' ? -1 : 1 })
-      .skip(skip)
-      .limit(pageSize)
-      .lean();
+    // 🚀 최적화된 채팅방 목록 조회
+    const startTime = Date.now();
+    const rooms = await queryOptimizer.getOptimizedRooms(filter, {
+      page,
+      pageSize,
+      sortField,
+      sortOrder,
+      includeParticipants: true
+    });
+    queryOptimizer.trackQuery('getRooms', startTime);
 
     // 안전한 응답 데이터 구성 
     const safeRooms = rooms.map(room => {
@@ -138,14 +163,8 @@ router.get('/', [limiter, auth], async (req, res) => {
     const totalPages = Math.ceil(totalCount / pageSize);
     const hasMore = skip + rooms.length < totalCount;
 
-    // 캐시 설정
-    res.set({
-      'Cache-Control': 'private, max-age=10',
-      'Last-Modified': new Date().toUTCString()
-    });
-
-    // 응답 전송
-    res.json({
+    // 응답 데이터 구성
+    const responseData = {
       success: true,
       data: safeRooms,
       metadata: {
@@ -160,7 +179,27 @@ router.get('/', [limiter, auth], async (req, res) => {
           order: sortOrder
         }
       }
+    };
+
+    // 🚀 이중 캐시에 저장 (검색이 없는 경우만)
+    if (!req.query.search) {
+      const cacheKey = `rooms:${page}:${pageSize}:${sortField}:${sortOrder}`;
+      
+      // 메모리 캐시에 즉시 저장 (60초)
+      memoryCache.set(cacheKey, responseData, 60);
+      
+      // Redis 캐시에 저장 (5분)
+      await cache.cacheRoomList(page, pageSize, sortField, sortOrder, responseData);
+    }
+
+    // 캐시 설정
+    res.set({
+      'Cache-Control': 'private, max-age=10',
+      'Last-Modified': new Date().toUTCString()
     });
+
+    // 응답 전송
+    res.json(responseData);
 
   } catch (error) {
     console.error('방 목록 조회 에러:', error);
@@ -264,6 +303,8 @@ router.get('/:roomId', auth, async (req, res) => {
 router.post('/:roomId/join', auth, async (req, res) => {
   try {
     const { password } = req.body;
+    console.log(`🔐 방 입장 시도: ${req.params.roomId}, 사용자: ${req.user.id}, 비밀번호 있음: ${!!password}`);
+    
     const room = await Room.findById(req.params.roomId).select('+password');
     
     if (!room) {
@@ -275,7 +316,10 @@ router.post('/:roomId/join', auth, async (req, res) => {
 
     // 비밀번호 확인
     if (room.hasPassword) {
+      console.log(`🔒 비밀번호 보호된 방: ${room.name}, 입력된 비밀번호: "${password}"`);
+      
       if (!password) {
+        console.log('❌ 비밀번호 미입력');
         return res.status(401).json({
           success: false,
           code: 'ROOM_PASSWORD_REQUIRED',
@@ -284,7 +328,10 @@ router.post('/:roomId/join', auth, async (req, res) => {
       }
       
       const isPasswordValid = await room.checkPassword(password);
+      console.log(`🔑 비밀번호 검증 결과: ${isPasswordValid}`);
+      
       if (!isPasswordValid) {
+        console.log('❌ 비밀번호 불일치');
         return res.status(401).json({
           success: false,
           code: 'INVALID_ROOM_PASSWORD',

@@ -80,7 +80,9 @@ class SocketService {
           this.cleanup(CLEANUP_REASONS.RECONNECT);
         }
 
-        const socketUrl = process.env.NEXT_PUBLIC_API_URL;
+        // Socket.IO는 API URL에서 /api 부분을 제거한 베이스 URL을 사용
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+        const socketUrl = apiUrl ? apiUrl.replace('/api', '') : 'http://localhost:5000';
         console.log('[Socket] Connecting to:', socketUrl);
 
         this.socket = io(socketUrl, {
