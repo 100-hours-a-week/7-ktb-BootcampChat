@@ -4,8 +4,12 @@ const router = express.Router();
 const auth = require('../../middleware/auth');
 const fileController = require('../../controllers/fileController');
 const { upload, errorHandler } = require('../../middleware/upload');
+// const AdvancedRateLimiter = require('../../middleware/rateLimiter'); // 부하테스트용 제거
 
-// 파일 업로드
+// Rate Limiter 초기화 (부하테스트용 제거)
+// const rateLimiter = new AdvancedRateLimiter();
+
+// 파일 업로드 (부하테스트용 Rate Limiting 제거)
 router.post('/upload',
   auth,
   upload.single('file'),

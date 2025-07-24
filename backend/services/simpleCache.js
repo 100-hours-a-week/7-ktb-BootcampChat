@@ -28,7 +28,21 @@ class SimpleCacheService {
       const cached = await redisClient.get(key);
       if (cached) {
         console.log(`✅ 캐시 히트: ${key}`);
-        return JSON.parse(cached);
+        // 🔥 안전한 JSON 파싱 개선
+        if (typeof cached === 'object') {
+          return cached;
+        }
+        if (typeof cached === 'string' && cached !== '[object Object]' && cached !== 'undefined') {
+          try {
+            return JSON.parse(cached);
+          } catch (parseError) {
+            console.error(`JSON 파싱 실패 (${key}):`, parseError.message);
+            // 파싱 실패한 캐시 삭제
+            await redisClient.del(key);
+            return null;
+          }
+        }
+        return cached;
       }
       console.log(`❌ 캐시 미스: ${key}`);
       return null;

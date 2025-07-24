@@ -1,15 +1,20 @@
 require('dotenv').config();
+
+// 🚀 부하테스트 최적화: Node.js 성능 튜닝
+process.env.UV_THREADPOOL_SIZE = 128; // 스레드풀 크기 증가
+process.env.NODE_ENV = process.env.NODE_ENV || 'production';
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const compression = require('compression');
 const http = require('http');
 const socketIO = require('socket.io');
+const { createAdapter } = require('@socket.io/redis-adapter');
+const { createClient } = require('ioredis');
 const path = require('path');
 
 const { router: roomsRouter, initializeSocket } = require('./routes/api/rooms');
 const routes = require('./routes');
-
 const app = express();
 const server = http.createServer(app);
 
@@ -70,33 +75,23 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
   }
 }));
 
-// 성능 모니터링 미들웨어
-app.use((req, res, next) => {
-  const startTime = Date.now();
-  
-  // 응답 완료 시 실행
-  res.on('finish', () => {
-    const duration = Date.now() - startTime;
-    const status = res.statusCode;
+// 성능 모니터링 미들웨어 (부하테스트용 최소화)
+if (process.env.NODE_ENV === 'development') {
+  app.use((req, res, next) => {
+    const startTime = Date.now();
     
-    // 개발 환경에서 모든 요청 로깅
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} - ${status} (${duration}ms)`);
-    }
+    res.on('finish', () => {
+      const duration = Date.now() - startTime;
+      
+      // 에러와 느린 요청만 로깅 (1초 이상)
+      if (res.statusCode >= 400 || duration > 1000) {
+        console.log(`${req.method} ${req.originalUrl} - ${res.statusCode} (${duration}ms)`);
+      }
+    });
     
-    // 느린 요청 경고 (500ms 이상)
-    if (duration > 500) {
-      console.warn(`🐌 느린 요청: ${req.method} ${req.originalUrl} - ${duration}ms`);
-    }
-    
-    // 에러 요청 로깅
-    if (status >= 400) {
-      console.error(`❌ 에러 요청: ${req.method} ${req.originalUrl} - ${status} (${duration}ms)`);
-    }
+    next();
   });
-  
-  next();
-});
+}
 
 // 기본 상태 체크
 app.get('/health', (req, res) => {
@@ -203,8 +198,14 @@ app.use('/api', routes);
 
 // Socket.IO 설정 (기본)
 const io = socketIO(server, { cors: corsOptions });
+
+// Redis 어댑터 적용 (멀티 워커 동기화)
+const pubClient = createClient({ host: 'localhost', port: 6379 });
+const subClient = pubClient.duplicate();
+io.adapter(createAdapter(pubClient, subClient));
+
 require('./sockets/chat')(io);
-initializeSocket(io);
+if (typeof initializeSocket === 'function') initializeSocket(io);
 
 // 404 에러 핸들러
 app.use((req, res) => {
@@ -228,12 +229,12 @@ app.use((err, req, res, next) => {
 
 // MongoDB 연결 최적화 설정
 const mongoOptions = {
-  // 연결 풀 설정
-  maxPoolSize: 10, // 최대 연결 수
-  minPoolSize: 2,  // 최소 연결 수
-  maxIdleTimeMS: 30000, // 30초 후 유휴 연결 해제
-  serverSelectionTimeoutMS: 5000, // 서버 선택 타임아웃
-  socketTimeoutMS: 45000, // 소켓 타임아웃
+  // 🚀 연결 풀 극대화 (부하테스트용)
+  maxPoolSize: 100, // 최대 연결 수 (10 → 100)
+  minPoolSize: 20,  // 최소 연결 수 (2 → 20)
+  maxIdleTimeMS: 10000, // 10초 후 유휴 연결 해제 (빠른 회전)
+  serverSelectionTimeoutMS: 2000, // 서버 선택 타임아웃 (빠르게)
+  socketTimeoutMS: 20000, // 소켓 타임아웃 (빠르게)
   
   // 안정성
   retryWrites: true,
