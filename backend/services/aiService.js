@@ -54,7 +54,7 @@ class AIService {
         ],
         temperature: 0.7,
         stream: false,
-        max_tokens: 1
+        max_tokens: 50
       });
 
       const content = response.data.choices[0].message.content;
