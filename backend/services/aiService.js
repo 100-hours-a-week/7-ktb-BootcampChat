@@ -58,12 +58,9 @@ class AIService {
       });
 
       const content = response.data.choices[0].message.content;
-      console.log('AI response:', content);
 
-      callbacks.onComplete({
-        content: content.trim()
-      });
-      return content.trim();
+      await callbacks.onComplete({ content });
+      return content;
       
     } catch (error) {
       console.error('AI response generation error:', error);
